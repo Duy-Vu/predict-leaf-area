@@ -1,0 +1,80 @@
+---
+title: "Predict leaf area without remove it"
+output: html_notebook
+---
+
+```{r}
+soybean <- read.table("heifeng.txt", sep = '', header = T)
+attach(soybean)
+head(soybean)
+```
+
+# Fit the multiple linear regression of log(Area) on log(Length) and log(Width)
+```{r}
+area.log <- log(Area)
+length.log <- log(Length)
+width.log <- log(Width)
+
+lm.area.log <- lm(area.log ~ length.log + width.log)
+summary(lm.area.log)
+```
+
+# Test the null hypothesis H0: E[area.log] = length.log + width.log
+In terms of Cβ = h, we have C = [[0, 1, 1]], β = [[Bias], [length.log], [width.log]], and h = E[area.log] = mean(area.log) = 3.87
+```{r}
+n <- length(Area) # n = 148
+p <- 3 # number of params to be estimated
+
+C <- matrix(c(0, 1, 1), nrow=1)
+B_hat <- matrix(lm.area.log$coefficients, ncol=1)
+h <- mean(area.log)
+X <- cbind(1, length.log, width.log)
+
+F.num <- t(C%*%B_hat - h) %*% solve(C %*% solve(t(X)%*%X) %*% t(C)) %*% (C%*%B_hat - h) / 1
+SSE.full <- sum(lm.area.log$residuals^2)
+MSE.full <- SSE.full/(n-p)
+F <- F.num/MSE.full
+p.value <- 1 - pf(F[1], 1, n-p)
+p.value
+```
+Using the F* test statistic which is basically equal to t* since the degree of freedom for the numerator is 1, p-value is basically equal to 0. Hence, we can reject the null hypothesis even with very high confidence level. In other words, based on the data we have, it is unlikely to conclude that the area of the leaf can be approximated by the area of a rectangle.
+
+# Test whether log(Width) a signiﬁcant variable after adjusting for log(Length)?
+We test the null hypothesis H0: β2(width.log) = 0 using R(width.log | length.log)
+```{r}
+SSE.reduced <- sum(lm(area.log ~ length.log)$residuals^2)
+R <- SSE.reduced - SSE.full
+F <- (R/1)/MSE.full
+p.value <- 1 - pf(F, 1, n-p)
+p.value
+```
+Again, p is very small, indicating that we can reject the null hypothesis, and thus log(Width) is a signiﬁcant variable.
+
+# Compute a 95 % conﬁdence interval for the difference β1 − β2
+Var(β1 − β2) = Var(β1) + Var(β2) − 2Cov(X,Y)
+```{r}
+b1.hat <- lm.area.log$coefficients[2]
+b2.hat <- lm.area.log$coefficients[3]
+diff.hat <- b1.hat - b2.hat
+cat(diff.hat)
+```
+
+```{r}
+B_hat.cov_var <- solve(t(X)%*%X)*MSE.full
+B_hat.cov_var
+b1.var <- B_hat.cov_var[2,2]
+b2.var <- B_hat.cov_var[3,3]
+b1_b2.cov <- B_hat.cov_var[2,3]
+
+diff.var <- b1.var + b2.var - 2*b1_b2.cov
+```
+
+```{r}
+alpha <- 1 - 0.95
+t.value <- qt(1-alpha/2, n-p)
+
+CI.lower <- diff.hat - t.value*diff.var
+CI.upper <- diff.hat + t.value*diff.var
+
+paste("95% confidence interval of β1 − β2 is (", CI.lower, ",", CI.upper,  ")")
+```
